@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import os
 
-DATASET_PATH = 'data/11-785-fall-20-homework-2-part-2/'
+DATASET_PATH = 'data/' # ! alter path according to your structure -> temporary fix and must decide on a common structure afterwards
 
 CLASSIFICATION_PATH = os.path.join(DATASET_PATH, 'classification_data/')
 VERIFICATION_PATH = os.path.join(DATASET_PATH, 'verification_data/')
