@@ -1,45 +1,44 @@
 import cv2 as cv
-import numpy as np 
+import numpy as np
 import pandas as pd
 import os
 
-DATASET_PATH = 'data/11-785-fall-20-homework-2-part-2/'
+from preprocessing.config import paths
 
-CLASSIFICATION_PATH = os.path.join(DATASET_PATH, 'classification_data/')
-VERIFICATION_PATH = os.path.join(DATASET_PATH, 'verification_data/')
+def check_paths(paths):
+    missing_paths = []
 
-TRAIN_PATH = os.path.join(CLASSIFICATION_PATH, 'train_data/')
-TEST_PATH = os.path.join(CLASSIFICATION_PATH, 'test_data/')
-VAL_PATH = os.path.join(CLASSIFICATION_PATH, 'val_data/')
+    for name, path in paths.items():
+        if not os.path.exists(path):
+            missing_paths.append((name, path))
 
-IMG_SIZE = (224, 224)
+    if len(missing_paths) > 0:
+        for name, path in missing_paths:
+            print(f"{name} not found with path {path}")
+            return False
 
-paths = {
-    "Dataset": DATASET_PATH,
-    "Classification": CLASSIFICATION_PATH,
-    "Verification": VERIFICATION_PATH,
-    "Train Path": TRAIN_PATH,
-    "Test Path": TEST_PATH,
-    "Val Path": VAL_PATH
-}
+    print('all paths validated')
+    return True
 
-for name, path in paths.items():
-    if os.path.exists(path):
-        continue
-    else:
-        print(f"path {name} not found with path {path}")
+def validate_data_setup():
+    if not check_paths(paths):
+        raise ValueError('Data setup invalid, please check dataset paths')
+    
+    return True
 
-def preprocess_image(image_path, img_size=IMG_SIZE):
+def preprocess_image(image_path, img_size=(224, 224)):
     image = cv.imread(image_path)
     if image is None:
         return f"image not found with path {image_path}"
 
     image = cv.cvtColor(image, cv.COLOR_BGR2RGB)
-    image = image.resize(image, img_size)
+    image = cv.resize(image, img_size)
     image = image.astype(np.float32) / 255.0
     image = np.transpose(image, (2, 0, 1))
 
     return image
+
+
 
 
 

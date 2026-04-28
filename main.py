@@ -1,8 +1,12 @@
 import numpy as np
 import cv2 as cv
+from preprocessing.preprocessing import validate_data_setup
 
 
 def main():
+    validate_data_setup()
+    print("main.py startup")
+
     cap = cv.VideoCapture(0)
     if not cap.isOpened():
         print("Cannot open camera")
