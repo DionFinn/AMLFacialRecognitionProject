@@ -1,0 +1,19 @@
+{
+  "meta": {
+    "started_at": "2026-05-05T00:31:06.858498",
+    "embedding_dim": 128,
+    "batch_size": 32,
+    "optimizer": "Adam",
+    "lr": 1e-05,
+    "margin": 0.3
+  },
+  "epochs": [
+    {
+      "epoch": 1,
+      "timestamp": "2026-05-05T00:45:04.624993",
+      "train_loss": 0.250024,
+      "cosine_auc": 0.693296,
+      "euclidean_auc": 0.693298
+    }
+  ]
+}

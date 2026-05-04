@@ -1,230 +1,264 @@
 import os
 import sys
-import numpy as np
-import pandas as pd
-import cv2 as cv
+import json
 import random
 import psutil
+from datetime import datetime
 from tqdm import tqdm
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
+from sklearn.metrics import roc_auc_score, roc_curve
 
-from sklearn.metrics import roc_curve, auc
-from sklearn.metrics import roc_auc_score
-import matplotlib.pyplot as plt
 # Adds the parent directory to the system path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from preprocessing.preprocessing import preprocess_image
-
-"""NOTE
-- Triplet lost method: the image (anchor) is compared to the same identity (positive sample) and a negative sample.
-- Model will learn to minimise distances between the anchor and the positive whilst maximising the distance between the anchor and the negative.
-- Model output: vectors (embeddings), not class labels -> no training needed for new users (in theory)
-- might experiment with mahalanabis distance
-
-Sample training hyperparameters:
-epochs = 20
-batch_size = 32
-lr = 1e-3
-optimizer = Adam
-margin = 0.3
-embedding_dim = 512
+from logger import TrainingLogger
 
 """
+NOTE
+- Triplet loss method: the image (anchor) is compared to the same identity (positive sample) and a negative sample.
+- Model will learn to minimise distances between the anchor and the positive whilst maximising the distance between the anchor and the negative.
+- Model output: vectors (embeddings), not class labels -> no training needed for new users (in theory)
+"""
 
-DATASET_PATH = 'data/' # ! alter path according to your structure -> temporary fix and must decide on a common structure afterwards
+# file paths
+DATASET_PATH = "data/" # ! alter path according to your structure -> temporary fix and must decide on a common structure afterwards
 
-CLASSIFICATION_PATH = os.path.join(DATASET_PATH, 'classification_data/')
-VERIFICATION_PATH = os.path.join(DATASET_PATH, 'verification_data/')
+CLASSIFICATION_PATH = os.path.join(DATASET_PATH, "classification_data/")
+VERIFICATION_PATH = os.path.join(DATASET_PATH, "verification_data/")
 
-TRAIN_PATH = os.path.join(CLASSIFICATION_PATH, 'train_data/')
-TEST_PATH = os.path.join(CLASSIFICATION_PATH, 'test_data/')
-VAL_PATH = os.path.join(CLASSIFICATION_PATH, 'val_data/')
+TRAIN_PATH = os.path.join(CLASSIFICATION_PATH, "train_data/")
+TEST_PATH = os.path.join(CLASSIFICATION_PATH, "test_data/")
+VAL_PATH = os.path.join(CLASSIFICATION_PATH, "val_data/")
+
+PAIRS_FILE = os.path.join(DATASET_PATH, 'verification_pairs_val.txt')
+ARTIFACTS_DIR = "models/artifacts/"
 
 IMG_SIZE = (224, 224)
 
 EPOCHS = 20
-
-paths = {
-    "Dataset": DATASET_PATH,
-    "Classification": CLASSIFICATION_PATH,
-    "Verification": VERIFICATION_PATH,
-    "Train Path": TRAIN_PATH,
-    "Test Path": TEST_PATH,
-    "Val Path": VAL_PATH
-}
-
-for name, path in paths.items():
-    if os.path.exists(path):
-        continue
-    else:
-        print(f"path {name} not found with path {path}")
+BATCH_SIZE = 32
+LR = 1e-5
+MARGIN = 0.3
+EMBEDDING_DIM = 128
+NUM_WORKERS = 8 # specific to my GPU - may change to lower/higher
 
 
-# ! NEEDS TO CLARIFY WITH TUTOR IF FACE NET IS ALLOWED - ELSE, GO WITH RESNET
-# FaceNet: https://medium.com/analytics-vidhya/introduction-to-facenet-a-unified-embedding-for-face-recognition-and-clustering-dbdac8e6f02
+def depthwise_separable_conv(in_ch, out_ch): # only for readability purposes
+    return nn.Sequential(
+        # depthwise - one filter per input channel
+        nn.Conv2d(in_ch, in_ch, 3, padding=1, groups=in_ch, bias=False),
+        nn.BatchNorm2d(in_ch),
+        nn.ReLU(),
+        # pointwise - mix channels cheaply with 1x1
+        nn.Conv2d(in_ch, out_ch, 1, bias=False),
+        nn.BatchNorm2d(out_ch),
+        nn.ReLU(),
+    )
 
 class MetricLearningModel(nn.Module):
-    def __init__(self, embedding_dim=128): # may change to a smaller number
+    def __init__(self, embedding_dim=128):
         super().__init__()
-        self.features = nn.Sequential( # 4 layers
-
-            nn.Conv2d(3, 32, 3, padding=1),
-            nn.BatchNorm2d(32),
-            nn.ReLU(),
+        self.features = nn.Sequential(
+            depthwise_separable_conv(3, 32),
             nn.MaxPool2d(2),
-
-            nn.Conv2d(32, 64, 3, padding=1),
-            nn.BatchNorm2d(64),
-            nn.ReLU(),
+            depthwise_separable_conv(32, 64),
             nn.MaxPool2d(2),
-
-            nn.Conv2d(64, 128, 3, padding=1),
-            nn.BatchNorm2d(128),
-            nn.ReLU(),
+            depthwise_separable_conv(64, 128),
             nn.MaxPool2d(2),
-
-            nn.Conv2d(128, 256, 3, padding=1),
-            nn.BatchNorm2d(256),
-            nn.ReLU(),
+            depthwise_separable_conv(128, 256),
             nn.MaxPool2d(2),
-
-            nn.AdaptiveAvgPool2d((1,1))
+            nn.AdaptiveAvgPool2d((1, 1))
         )
         self.embedding = nn.Linear(256, embedding_dim)
+        self.scale = nn.Parameter(torch.tensor(10.0)) # learned scale
 
     def forward(self, x):
         x = self.features(x)
-        x = x.view(x.size(0), -1)
+        x = x.flatten(1)
         x = self.embedding(x)
-        x = F.normalize(x, p=2, dim=1) # L2 normalisation for FaceNet
+        x = F.normalize(x, p=2, dim=1)
+        return x * self.scale # scaled unit vector
 
-        return x
-
-
+# transforming datasset for Triplet method for metric learning
 class TripletDataset(Dataset):
     def __init__(self, root_dir):
         self.root = root_dir
-
         self.people = {}
         self.ids = []
 
         for person in os.listdir(root_dir):
             folder = os.path.join(root_dir, person)
-
             if not os.path.isdir(folder):
                 continue
 
-            imgs = [
+            imgs = tuple(
                 os.path.join(folder, x)
                 for x in os.listdir(folder)
-            ]
-
+            )
             if len(imgs) >= 2:
                 self.people[person] = imgs
                 self.ids.append(person)
 
     def __len__(self):
+        # true dataset size: total number of images across all identities
         return sum(len(imgs) for imgs in self.people.values())
 
     def __getitem__(self, idx):
-
+        # idx is intentionally ignored - triplets are sampled randomly
         anchor_id = random.choice(self.ids)
 
+        # rejection-sample a different identity for the negative
         negative_id = random.choice(self.ids)
         while negative_id == anchor_id:
             negative_id = random.choice(self.ids)
 
-        anchor_path, positive_path = random.sample(
-            self.people[anchor_id], 2
-        )
+        # two distinct images from the same identity
+        anchor_path, positive_path = random.sample(self.people[anchor_id], 2)
 
-        negative_path = random.choice(
-            self.people[negative_id]
-        )
+        # one image from the negative identity
+        negative_path = random.choice(self.people[negative_id])
 
         anchor = preprocess_image(anchor_path)
         positive = preprocess_image(positive_path)
         negative = preprocess_image(negative_path)
 
-        # anchor = anchor.to(device, non_blocking=True)
-        # positive = positive.to(device, non_blocking=True)
-        # negative = negative.to(device, non_blocking=True)
-
         return anchor, positive, negative
+    
+# evaluation metrics
+def cosine_similarity_score(emb_a, emb_b):
+    return F.cosine_similarity(emb_a, emb_b, dim=1)
 
-def evaluate_auc(model, pairs_file, device):
+def euclidean_distance_score(emb_a, emb_b):
+    return -torch.norm(emb_a - emb_b, p=2, dim=1)
+
+# evaluation
+def evaluate_verification(model, pairs_file, device, metric="cosine"):
+
     model.eval()
-    scores, labels = [], []
-    with torch.no_grad():
-        with open(pairs_file) as f:
-            for line in tqdm(f, desc="Evaluating AUC", leave=False):
-                path_a, path_b, label = line.strip().split()
-                emb_a = model(preprocess_image(path_a).unsqueeze(0).to(device))
-                emb_b = model(preprocess_image(path_b).unsqueeze(0).to(device))
-                sim = F.cosine_similarity(emb_a, emb_b).item()
-                scores.append(sim)
-                labels.append(int(label))
-    return roc_auc_score(labels, scores)
+    scores = []
+    labels = []
 
-def log_memory():
-    process = psutil.Process(os.getpid())
-    mem = process.memory_info().rss / 1024 ** 3  # GB
-    print(f"RAM usage: {mem:.2f} GB")
+    pairs_dir = os.path.dirname(os.path.abspath(pairs_file))
+
+    with open(pairs_file, "r") as f:
+        pairs = [line.strip() for line in f if line.strip()]
+
+    with torch.no_grad():
+        for line in tqdm(pairs, desc=f"Evaluating [{metric}]", leave=False):
+            parts = line.split()
+            if len(parts) != 3:
+                continue
+
+            path_a, path_b, label = parts
+            full_a = path_a if os.path.isabs(path_a) else os.path.join(pairs_dir, path_a)
+            full_b = path_b if os.path.isabs(path_b) else os.path.join(pairs_dir, path_b)
+
+            if not os.path.exists(full_a) or not os.path.exists(full_b):
+                tqdm.write(f"  [SKIP] missing file in pair")
+                continue
+
+            result_a = preprocess_image(full_a)
+            result_b = preprocess_image(full_b)
+
+            # ! convert numpy array -> may modify preprocessing.py
+            def to_tensor(x):
+                if isinstance(x, torch.Tensor):
+                    return x
+                if isinstance(x, np.ndarray):
+                    # shape is (H, W, C) from cv2 - convert to (C, H, W)
+                    t = torch.from_numpy(x).float()
+                    if t.ndim == 3 and t.shape[-1] in (1, 3, 4):
+                        t = t.permute(2, 0, 1)
+                    return t
+                return None
+
+            tensor_a = to_tensor(result_a)
+            tensor_b = to_tensor(result_b)
+                                            
+            tensor_a = tensor_a.unsqueeze(0).to(device)
+            tensor_b = tensor_b.unsqueeze(0).to(device) 
+            emb_a = model(tensor_a)
+            emb_b = model(tensor_b)
+
+            if metric == "cosine":
+                score = F.cosine_similarity(emb_a, emb_b, dim=1).item()
+                # score = cosine_similarity_score(emb_a, emb_b).item()
+            else:
+                # score = euclidean_distance_score(emb_a, emb_b).item()
+                score = -torch.norm(emb_a - emb_b, p=2, dim=1).item()
+
+            scores.append(score)
+            labels.append(int(label))
+
+    scores_np = np.array(scores)
+    labels_np = np.array(labels)
+    auc_score = roc_auc_score(labels_np, scores_np)
+    fpr, tpr, thresholds = roc_curve(labels_np, scores_np)
+
+    return {
+        "auc": auc_score,
+        "fpr": fpr.tolist(),
+        "tpr": tpr.tolist(),
+        "thresholds": thresholds.tolist(),
+        "scores": scores_np.tolist(),
+        "labels": labels_np.tolist(),
+        "metric": metric,
+    }
 
 def main():
-    
-    print(torch.__version__)
-    print(torch.cuda.is_available())
-    print(torch.cuda.get_device_name(0))
 
-    # test
-    x = torch.randn(3,3).cuda()
-    print(x)
-
-    # * training loop
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
+    print(f"Using device: {device}\n")
 
-    print("formatting dataset for metrics learning")
+    # dataset and loader
+    print("Indexing dataset...")
     dataset = TripletDataset(TRAIN_PATH)
-    # loader = DataLoader(dataset, batch_size=32, shuffle=True)
-    print("starting data loading")
+    print(f"{len(dataset):,} total images across {len(dataset.ids):,} identities\n")
+
     loader = DataLoader(
         dataset,
-        batch_size=32,
+        batch_size=BATCH_SIZE,
         shuffle=True,
-        num_workers=6, # ! parallel image loading workers -> PLEASE CHANGE IF YOU HAVE A WEAKER GPU
-        pin_memory=True, # pages memory for faster CPU->GPU transfer
-        prefetch_factor=2, # each worker prefetches 2 batches ahead
-        persistent_workers=True # don't kill/respawn workers each epoch
+        num_workers=NUM_WORKERS,
+        pin_memory=True,
+        prefetch_factor=2,
+        persistent_workers=True,
     )
-    print("modelling")
-    model = MetricLearningModel(128).to(device)
 
-    # https://docs.pytorch.org/docs/stable/generated/torch.nn.TripletMarginLoss.html
-    criterion = nn.TripletMarginLoss(margin=0.3)
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    # model, loss, optimiser 
+    model = MetricLearningModel(EMBEDDING_DIM).to(device)
+    criterion = nn.TripletMarginLoss(margin=MARGIN)
+    optimizer = torch.optim.Adam(model.parameters(), lr=LR)
 
+    # lgogger
+    logger = TrainingLogger()
+    logger.set_meta(
+        embedding_dim=EMBEDDING_DIM,
+        batch_size=BATCH_SIZE,
+        optimizer="Adam",
+        lr=LR,
+        margin=MARGIN,
+    )
+
+    # training loop 
+    best_cosine_auc = 0.0
     best_loss = float("inf")
-    epoch_bar = tqdm(range(EPOCHS), desc="Training", unit="epoch")
-    # print("starting training loop")
-    for epoch in range(EPOCHS):
-        # print(f"Epoch: {epoch+1}")
-        log_memory()
-        model.train()
-        total_loss = 0
 
-        batch_bar = tqdm(loader, desc=f"Epoch {epoch+1}", leave=False, unit="batch")
+    epoch_bar = tqdm(range(1, EPOCHS + 1), desc="Training", unit="epoch")
+
+    for epoch in epoch_bar:
+
+        model.train()
+        total_loss = 0.0
+
+        batch_bar = tqdm(loader, desc=f"Epoch {epoch}/{EPOCHS}", leave=False, unit="batch")
 
         for i, (anchor, pos, neg) in enumerate(batch_bar):
-            # anchor = anchor.to(device)
-            # pos = pos.to(device)
-            # neg = neg.to(device)
-
             anchor = anchor.to(device, non_blocking=True)
             pos = pos.to(device, non_blocking=True)
             neg = neg.to(device, non_blocking=True)
@@ -243,53 +277,62 @@ def main():
             avg_loss = total_loss / (i + 1)
 
             batch_bar.set_postfix({
-                "loss": f"{avg_loss:.4f}",
-                "batch_loss": f"{loss.item():.4f}"
+                "avg_loss": f"{avg_loss:.4f}",
+                "batch_loss": f"{loss.item():.4f}",
             })
-        auc = evaluate_auc(model, "verification_pairs_val.txt", device)
+
+        # Per-epoch evaluation
+        cosine_auc = None
+        euclidean_auc = None
+
+        cos_results = evaluate_verification(model, PAIRS_FILE, device, metric="cosine")
+        euc_results = evaluate_verification(model, PAIRS_FILE, device, metric="euclidean")
+        cosine_auc = cos_results["auc"]
+        euclidean_auc = euc_results["auc"]
+
+        # logging 
+        logger.log_epoch(epoch, avg_loss, cosine_auc, euclidean_auc)
+
         epoch_bar.set_postfix({
-            "avg_loss": f"{avg_loss:.4f}",
-            "epoch": epoch + 1,
-            "AUC": f"{auc:.4f}"
+            "loss": f"{avg_loss:.4f}",
+            "cos_auc": f"{cosine_auc:.4f}" if cosine_auc is not None else "-",
+            "euc_auc": f"{euclidean_auc:.4f}" if euclidean_auc is not None else "-",
         })
 
-        print(epoch, total_loss)
-
-        if total_loss < best_loss:
-            best_loss = total_loss
-
-            torch.save(
-                model.state_dict(),
-                "models/artifacts/metric_learning_128_best.pth"
-            )
-
+        # always save the latest checkpoint for resume
         torch.save({
             "epoch": epoch,
             "model_state_dict": model.state_dict(),
             "optimizer_state_dict": optimizer.state_dict(),
-            "loss": total_loss
-        }, "models/artifacts/metric_learning_128.pth")
+            "loss": avg_loss,
+            "cosine_auc": cosine_auc,
+            "euclidean_auc": euclidean_auc,
+        }, os.path.join(ARTIFACTS_DIR, "metric_learning_latest.pth"))
+
+        # save best-by-loss model
+        if avg_loss < best_loss:
+            best_loss = avg_loss
+            torch.save(
+                model.state_dict(),
+                os.path.join(ARTIFACTS_DIR, "metric_learning_best_loss.pth")
+            )
+            tqdm.write(f"Best loss model saved with (loss: {avg_loss:.4f})")
+
+        # save best-by-AUC model
+        if cosine_auc is not None and cosine_auc > best_cosine_auc:
+            best_cosine_auc = cosine_auc
+            torch.save(
+                model.state_dict(),
+                os.path.join(ARTIFACTS_DIR, "metric_learning_best_auc.pth")
+            )
+            tqdm.write(f"Best AUC model saved with (cosine AUC: {cosine_auc:.4f})")
+
+    print("\nTraining complete.")
+    print(f"Best loss: {best_loss:.4f}")
+    print(f"Best cosine AUC: {best_cosine_auc:.4f}")
+    print(f"History saved : {logger.save_path}")
+    print(f"{logger.txt_path}")
 
 
 if __name__ == "__main__":
     main()
-
-
-
-
-# def metric_learning():
-#     pass
-
-# def evaluate():
-#     """
-#     ROC and AUC will be used to assess the model's performance and face verification
-#     Accept if above a threshold, else reject
-#     - test and compare: cosine similarity and Euclidean distance
-#     """
-#     pass
-
-# def cosine_similarity(v1, v2):
-#     pass
-
-# def euclidean_distance(v1, v2):
-#     pass

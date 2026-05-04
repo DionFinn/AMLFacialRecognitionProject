@@ -6,8 +6,6 @@ import torch
 import torch.nn.functional as F
 from tqdm import tqdm
 from sklearn.metrics import roc_auc_score
-from metric_learning import MetricLearningModel
-from metric_learning import evaluate_auc
 
 def save_checkpoint(model, optimizer, epoch, total_loss, best_loss, save_path):
 
