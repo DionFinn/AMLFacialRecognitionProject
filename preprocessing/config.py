@@ -8,7 +8,7 @@ TEST_PATH = os.path.join(CLASSIFICATION_PATH, 'test_data/')
 VAL_PATH = os.path.join(CLASSIFICATION_PATH, 'val_data/')
 VERIFICATION_PAIRS_VAL = os.path.join(DATASET_PATH, 'verification_pairs_val.txt')
 
-IMG_SIZE = (224, 224)
+IMG_SIZE = (342, 342)
 
 paths = {
     "Dataset": DATASET_PATH,

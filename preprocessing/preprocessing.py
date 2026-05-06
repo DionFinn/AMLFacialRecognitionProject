@@ -26,7 +26,7 @@ def validate_data_setup():
     
     return True
 
-def preprocess_image(image_path, img_size=(224, 224)):
+def preprocess_image(image_path, img_size=(342, 342)):
     image = cv.imread(image_path)
     if image is None:
         return f"image not found with path {image_path}"
