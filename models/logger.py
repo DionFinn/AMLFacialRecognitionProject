@@ -1,3 +1,5 @@
+# saves everything into the artifacts folder
+
 import os
 import sys
 import json

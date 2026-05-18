@@ -1,6 +1,6 @@
 {
   "meta": {
-    "started_at": "2026-05-05T00:31:06.858498",
+    "started_at": "2026-05-18T14:11:16.022286",
     "embedding_dim": 128,
     "batch_size": 32,
     "optimizer": "Adam",
@@ -10,10 +10,10 @@
   "epochs": [
     {
       "epoch": 1,
-      "timestamp": "2026-05-05T00:45:04.624993",
-      "train_loss": 0.250024,
-      "cosine_auc": 0.693296,
-      "euclidean_auc": 0.693298
+      "timestamp": "2026-05-18T14:20:08.907162",
+      "train_loss": 0.251158,
+      "cosine_auc": 0.655649,
+      "euclidean_auc": 0.65565
     }
   ]
 }

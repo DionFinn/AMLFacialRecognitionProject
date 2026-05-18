@@ -1,4 +1,4 @@
-Training started: 2026-05-05T00:31:06.858498
+Training started: 2026-05-18T14:11:16.022286
 Embedding dim: 128
 Batch size: 32
 Optimizer: Adam
@@ -7,4 +7,4 @@ Triplet margin: 0.3
 
 Epoch    Loss           Cosine AUC       Euclidean AUC
 ------------------------------------------------------
-1        0.250024       0.693296         0.693298
+1        0.251158       0.655649         0.655650

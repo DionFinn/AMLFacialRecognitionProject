@@ -43,8 +43,8 @@ IMG_SIZE = (224, 224)
 EPOCHS = 20
 BATCH_SIZE = 32
 LR = 1e-5
-MARGIN = 0.3
-EMBEDDING_DIM = 128
+MARGIN = 0.3 # TODO EXPERIMENT WITH MARGINS
+EMBEDDING_DIM = 128 # 128 dimensional plot
 NUM_WORKERS = 8 # specific to my GPU - may change to lower/higher
 
 
@@ -81,26 +81,27 @@ class MetricLearningModel(nn.Module):
         x = self.features(x)
         x = x.flatten(1)
         x = self.embedding(x)
-        x = F.normalize(x, p=2, dim=1)
+        x = F.normalize(x, p=2.0, dim=1) # DO NOT CHANGE 2.0 TO INT
         return x * self.scale # scaled unit vector
 
 # transforming datasset for Triplet method for metric learning
+# ONLY constructs file paths
 class TripletDataset(Dataset):
     def __init__(self, root_dir):
         self.root = root_dir
-        self.people = {}
-        self.ids = []
+        self.people = {} # gives out {"n000003": ("../img1.jpg", "../img2.jpg", ..)}
+        self.ids = [] # gives out ["n000003", ...]
 
         for person in os.listdir(root_dir):
             folder = os.path.join(root_dir, person)
             if not os.path.isdir(folder):
                 continue
 
-            imgs = tuple(
+            imgs = tuple( # lists every images in this person's id - tuple used to not be immutable
                 os.path.join(folder, x)
                 for x in os.listdir(folder)
             )
-            if len(imgs) >= 2:
+            if len(imgs) >= 2: # metric learning can't work unless an anchor and a positive are present
                 self.people[person] = imgs
                 self.ids.append(person)
 
@@ -108,13 +109,12 @@ class TripletDataset(Dataset):
         # true dataset size: total number of images across all identities
         return sum(len(imgs) for imgs in self.people.values())
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx): # gets the idx from the self.ids above (key)
         # idx is intentionally ignored - triplets are sampled randomly
         anchor_id = random.choice(self.ids)
 
-        # rejection-sample a different identity for the negative
         negative_id = random.choice(self.ids)
-        while negative_id == anchor_id:
+        while negative_id == anchor_id: # ensures negative != anchor
             negative_id = random.choice(self.ids)
 
         # two distinct images from the same identity
@@ -123,6 +123,7 @@ class TripletDataset(Dataset):
         # one image from the negative identity
         negative_path = random.choice(self.people[negative_id])
 
+        # TODO modify preprocess_image - needs to verify with supervised learning
         anchor = preprocess_image(anchor_path)
         positive = preprocess_image(positive_path)
         negative = preprocess_image(negative_path)
@@ -159,7 +160,7 @@ def evaluate_verification(model, pairs_file, device, metric="cosine"):
             full_b = path_b if os.path.isabs(path_b) else os.path.join(pairs_dir, path_b)
 
             if not os.path.exists(full_a) or not os.path.exists(full_b):
-                tqdm.write(f"  [SKIP] missing file in pair")
+                tqdm.write(f"[SKIP] missing file in pair")
                 continue
 
             result_a = preprocess_image(full_a)
@@ -216,7 +217,7 @@ def main():
     print(f"Using device: {device}\n")
 
     # dataset and loader
-    print("Indexing dataset...")
+    print("Indexing dataset to match with Triplet format")
     dataset = TripletDataset(TRAIN_PATH)
     print(f"{len(dataset):,} total images across {len(dataset.ids):,} identities\n")
 
@@ -232,7 +233,7 @@ def main():
 
     # model, loss, optimiser 
     model = MetricLearningModel(EMBEDDING_DIM).to(device)
-    criterion = nn.TripletMarginLoss(margin=MARGIN)
+    criterion = nn.TripletMarginLoss(margin=MARGIN) # https://docs.pytorch.org/docs/2.12/generated/torch.nn.TripletMarginLoss.html
     optimizer = torch.optim.Adam(model.parameters(), lr=LR)
 
     # lgogger
@@ -252,10 +253,8 @@ def main():
     epoch_bar = tqdm(range(1, EPOCHS + 1), desc="Training", unit="epoch")
 
     for epoch in epoch_bar:
-
         model.train()
         total_loss = 0.0
-
         batch_bar = tqdm(loader, desc=f"Epoch {epoch}/{EPOCHS}", leave=False, unit="batch")
 
         for i, (anchor, pos, neg) in enumerate(batch_bar):
@@ -281,10 +280,11 @@ def main():
                 "batch_loss": f"{loss.item():.4f}",
             })
 
-        # Per-epoch evaluation
+        # per-epoch evaluation
         cosine_auc = None
         euclidean_auc = None
 
+        # ! THIS IS WHERE EVALUATION TAKES PLACE
         cos_results = evaluate_verification(model, PAIRS_FILE, device, metric="cosine")
         euc_results = evaluate_verification(model, PAIRS_FILE, device, metric="euclidean")
         cosine_auc = cos_results["auc"]
@@ -309,7 +309,7 @@ def main():
             "euclidean_auc": euclidean_auc,
         }, os.path.join(ARTIFACTS_DIR, "metric_learning_latest.pth"))
 
-        # save best-by-loss model
+        # save best loss model
         if avg_loss < best_loss:
             best_loss = avg_loss
             torch.save(
@@ -318,13 +318,19 @@ def main():
             )
             tqdm.write(f"Best loss model saved with (loss: {avg_loss:.4f})")
 
-        # save best-by-AUC model
+        # save AUC model
         if cosine_auc is not None and cosine_auc > best_cosine_auc:
             best_cosine_auc = cosine_auc
             torch.save(
                 model.state_dict(),
                 os.path.join(ARTIFACTS_DIR, "metric_learning_best_auc.pth")
             )
+            # TorchScript for deployment (saved for )
+            scripted = torch.jit.script(model)
+            scripted.save(
+                os.path.join(ARTIFACTS_DIR, "metric_learning_scripted.pt")
+            )
+
             tqdm.write(f"Best AUC model saved with (cosine AUC: {cosine_auc:.4f})")
 
     print("\nTraining complete.")
