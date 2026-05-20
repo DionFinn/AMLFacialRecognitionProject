@@ -14,24 +14,36 @@ class TrainingLogger:
     def __init__(self, save_path=os.path.join(ARTIFACTS_DIR, "training_history.json")):
         self.save_path = save_path
         self.txt_path = save_path.replace(".json", ".txt")
-        self.history = {
-            "meta":   {
-                "started_at": datetime.now().isoformat(),
-                "embedding_dim": None,
-                "batch_size": None,
-                "optimizer": None,
-                "lr": None,
-                "margin": None,
-            },
-            "epochs": [],
-        }
+
+        if os.path.exists(save_path):
+            with open(save_path, "r") as f:
+                self.history = json.load(f)
+            print(f"[Logger] Resuming history from {save_path} "
+                  f"({len(self.history['epochs'])} existing epochs)")
+        else:
+            self.history = {
+                "meta":   {
+                    "started_at": datetime.now().isoformat(),
+                    "embedding_dim": None,
+                    "batch_size": None,
+                    "optimizer": None,
+                    "lr": None,
+                    "margin": None,
+                },
+                "epochs": [],
+            }
 
     def set_meta(self, **kwargs):
+        # will resume last run
+        original_started_at = self.history["meta"].get("started_at")
         self.history["meta"].update(kwargs)
+        if original_started_at and "started_at" not in kwargs:
+            self.history["meta"]["started_at"] = original_started_at
         self._save()
 
     def log_epoch(self, epoch, train_loss, cosine_auc=None, euclidean_auc=None):
         entry = {
+            "run_id": self.history["meta"].get("run_id", "unknown"),
             "epoch": epoch,
             "timestamp": datetime.now().isoformat(),
             "train_loss": round(train_loss, 6),

@@ -11,7 +11,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
+from torch.optim.lr_scheduler import ReduceLROnPlateau   
 from sklearn.metrics import roc_auc_score, roc_curve
+from torchvision.models import mobilenet_v3_small
 
 # Adds the parent directory to the system path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -42,11 +44,10 @@ IMG_SIZE = (224, 224)
 
 EPOCHS = 20
 BATCH_SIZE = 32
-LR = 1e-5
+LR = 1e-3 # had it at 1e-5 but was too little (score of around 0.63)
 MARGIN = 0.3 # TODO EXPERIMENT WITH MARGINS
 EMBEDDING_DIM = 128 # 128 dimensional plot
 NUM_WORKERS = 8 # specific to my GPU - may change to lower/higher
-
 
 def depthwise_separable_conv(in_ch, out_ch): # only for readability purposes
     return nn.Sequential(
@@ -61,8 +62,9 @@ def depthwise_separable_conv(in_ch, out_ch): # only for readability purposes
     )
 
 class MetricLearningModel(nn.Module):
-    def __init__(self, embedding_dim=128):
+    def __init__(self, embedding_dim=128, normalize=True):
         super().__init__()
+        self.normalize = normalize # True = cosine model, False = euclidean model
         self.features = nn.Sequential(
             depthwise_separable_conv(3, 32),
             nn.MaxPool2d(2),
@@ -74,15 +76,26 @@ class MetricLearningModel(nn.Module):
             nn.MaxPool2d(2),
             nn.AdaptiveAvgPool2d((1, 1))
         )
-        self.embedding = nn.Linear(256, embedding_dim)
-        self.scale = nn.Parameter(torch.tensor(10.0)) # learned scale
+        # self.embedding = nn.Linear(256, embedding_dim)
+        self.embedding = nn.Sequential(
+            nn.Linear(256,512),
+            nn.BatchNorm1d(512), # hope to stablise embedding distributions
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(512,embedding_dim)
+        )
+        # self.scale = nn.Parameter(torch.tensor(10.0)) # learned scale
 
     def forward(self, x):
         x = self.features(x)
         x = x.flatten(1)
         x = self.embedding(x)
-        x = F.normalize(x, p=2.0, dim=1) # DO NOT CHANGE 2.0 TO INT
-        return x * self.scale # scaled unit vector
+        if self.normalize:
+            x = F.normalize(x, p=2.0, dim=1) # DO NOT CHANGE 2.0 TO INT
+        return x
+        # TODO remove scaling
+        # return x * self.scale # scaled unit vector
+        
 
 # transforming datasset for Triplet method for metric learning
 # ONLY constructs file paths
@@ -115,7 +128,9 @@ class TripletDataset(Dataset):
 
         negative_id = random.choice(self.ids)
         while negative_id == anchor_id: # ensures negative != anchor
-            negative_id = random.choice(self.ids)
+            # negative_id = random.choice(self.ids)
+            candidate_ids = [x for x in self.ids if x != anchor_id]
+            negative_id = random.choice(candidate_ids)
 
         # two distinct images from the same identity
         anchor_path, positive_path = random.sample(self.people[anchor_id], 2)
@@ -233,9 +248,15 @@ def main():
 
     # model, loss, optimiser 
     model = MetricLearningModel(EMBEDDING_DIM).to(device)
-    criterion = nn.TripletMarginLoss(margin=MARGIN) # https://docs.pytorch.org/docs/2.12/generated/torch.nn.TripletMarginLoss.html
+    criterion = nn.TripletMarginLoss(margin=MARGIN, p=2) # https://docs.pytorch.org/docs/2.12/generated/torch.nn.TripletMarginLoss.html
     optimizer = torch.optim.Adam(model.parameters(), lr=LR)
 
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode="max",
+        factor=0.5,
+        patience=2
+    )
     # lgogger
     logger = TrainingLogger()
     logger.set_meta(
@@ -290,6 +311,8 @@ def main():
         cosine_auc = cos_results["auc"]
         euclidean_auc = euc_results["auc"]
 
+        scheduler.step(cosine_auc)
+
         # logging 
         logger.log_epoch(epoch, avg_loss, cosine_auc, euclidean_auc)
 
@@ -332,6 +355,14 @@ def main():
             )
 
             tqdm.write(f"Best AUC model saved with (cosine AUC: {cosine_auc:.4f})")
+
+        with torch.no_grad(): # test
+            sample = next(iter(loader))[0][:32].to(device)
+            emb = model(sample)
+            emb_std = emb.std(dim=0).mean().item()
+            emb_norm = emb.norm(dim=1).mean().item()
+            print(f"Embedding STD: {emb_std:.4f}")
+            print(f"Embedding Norm: {emb_norm:.4f}")
 
     print("\nTraining complete.")
     print(f"Best loss: {best_loss:.4f}")

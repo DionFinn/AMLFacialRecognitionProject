@@ -10,3 +10,4 @@ tqdm
 pillow
 jupyter
 seaborn
+facenet_pytorch 
