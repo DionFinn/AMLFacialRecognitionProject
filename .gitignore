@@ -4,6 +4,4 @@ env/
 .data/
 data/
 .DS_Store.DS_Store
-model/antispoof.keras
-model/antispoof_raw.keras
-model/antispoof_transfer.keras
+model/models
