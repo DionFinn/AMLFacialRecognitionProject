@@ -118,6 +118,8 @@ def recognition(frame):
 
 def main():
 
+    print("test main")
+
     cap = cv.VideoCapture(0)
     if not cap.isOpened():
         print("Cannot open camera")

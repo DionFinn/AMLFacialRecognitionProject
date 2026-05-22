@@ -127,10 +127,13 @@ class TripletDataset(Dataset):
         anchor_id = random.choice(self.ids)
 
         negative_id = random.choice(self.ids)
-        while negative_id == anchor_id: # ensures negative != anchor
-            # negative_id = random.choice(self.ids)
-            candidate_ids = [x for x in self.ids if x != anchor_id]
-            negative_id = random.choice(candidate_ids)
+        # while negative_id == anchor_id: # ensures negative != anchor
+        #     # negative_id = random.choice(self.ids)
+        #     candidate_ids = [x for x in self.ids if x != anchor_id]
+        #     negative_id = random.choice(candidate_ids)
+
+        candidate_ids = [x for x in self.ids if x != anchor_id]
+        negative_id = random.choice(candidate_ids)
 
         # two distinct images from the same identity
         anchor_path, positive_path = random.sample(self.people[anchor_id], 2)
@@ -144,87 +147,95 @@ class TripletDataset(Dataset):
         negative = preprocess_image(negative_path)
 
         return anchor, positive, negative
-    
-# evaluation metrics
-def cosine_similarity_score(emb_a, emb_b):
-    return F.cosine_similarity(emb_a, emb_b, dim=1)
-
-def euclidean_distance_score(emb_a, emb_b):
-    return -torch.norm(emb_a - emb_b, p=2, dim=1)
 
 # evaluation
 def evaluate_verification(model, pairs_file, device, metric="cosine"):
 
     model.eval()
-    scores = []
-    labels = []
 
     pairs_dir = os.path.dirname(os.path.abspath(pairs_file))
+    pairs = []
+    unique_paths = set()
 
     with open(pairs_file, "r") as f:
-        pairs = [line.strip() for line in f if line.strip()]
-
-    with torch.no_grad():
-        for line in tqdm(pairs, desc=f"Evaluating [{metric}]", leave=False):
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+        # pairs = [line.strip().split() for line in f if line.strip()]
             parts = line.split()
             if len(parts) != 3:
                 continue
-
             path_a, path_b, label = parts
+
             full_a = path_a if os.path.isabs(path_a) else os.path.join(pairs_dir, path_a)
             full_b = path_b if os.path.isabs(path_b) else os.path.join(pairs_dir, path_b)
 
+            # ! DEBUG - WILL REMOVE
             if not os.path.exists(full_a) or not os.path.exists(full_b):
-                tqdm.write(f"[SKIP] missing file in pair")
+                tqdm.write(f"[SKIP] Missing file in pair")
                 continue
 
-            result_a = preprocess_image(full_a)
-            result_b = preprocess_image(full_b)
+            pairs.append((full_a, full_b, int(label)))
 
-            # ! convert numpy array -> may modify preprocessing.py
-            def to_tensor(x):
-                if isinstance(x, torch.Tensor):
-                    return x
-                if isinstance(x, np.ndarray):
-                    # shape is (H, W, C) from cv2 - convert to (C, H, W)
-                    t = torch.from_numpy(x).float()
-                    if t.ndim == 3 and t.shape[-1] in (1, 3, 4):
-                        t = t.permute(2, 0, 1)
-                    return t
-                return None
+            unique_paths.add(full_a)
+            unique_paths.add(full_b)
 
-            tensor_a = to_tensor(result_a)
-            tensor_b = to_tensor(result_b)
-                                            
-            tensor_a = tensor_a.unsqueeze(0).to(device)
-            tensor_b = tensor_b.unsqueeze(0).to(device) 
-            emb_a = model(tensor_a)
-            emb_b = model(tensor_b)
+    embedding_cache = {}
 
-            if metric == "cosine":
-                score = F.cosine_similarity(emb_a, emb_b, dim=1).item()
-                # score = cosine_similarity_score(emb_a, emb_b).item()
-            else:
-                # score = euclidean_distance_score(emb_a, emb_b).item()
-                score = -torch.norm(emb_a - emb_b, p=2, dim=1).item()
+    with torch.no_grad():
+        for path in tqdm(unique_paths, desc="Caching embeddings", leave=False):
+            img = preprocess_image(path)
+            img = torch.from_numpy(img).float()
+            img = img.unsqueeze(0).to(device)
 
-            scores.append(score)
-            labels.append(int(label))
+            embedding = model(img)
+            embedding_cache[path] = embedding.squeeze(0).cpu()
 
-    scores_np = np.array(scores)
+    cosine_scores = []
+    euclidean_scores = []
+    labels = []
+
+    for full_a, full_b, label in tqdm(pairs,desc="Evaluating pairs",leave=False):
+
+        emb_a = embedding_cache[full_a]
+        emb_b = embedding_cache[full_b]
+
+        cos_score = F.cosine_similarity(emb_a.unsqueeze(0),emb_b.unsqueeze(0),dim=1).item()
+        euc_score = -torch.norm(emb_a - emb_b,p=2).item()
+
+        cosine_scores.append(cos_score)
+        euclidean_scores.append(euc_score)
+        labels.append(label)
+
     labels_np = np.array(labels)
-    auc_score = roc_auc_score(labels_np, scores_np)
-    fpr, tpr, thresholds = roc_curve(labels_np, scores_np)
+    cosine_scores_np = np.array(cosine_scores)
+    euclidean_scores_np = np.array(euclidean_scores)
 
+    cos_auc = roc_auc_score(labels_np,cosine_scores_np)
+    cos_fpr, cos_tpr, cos_thresholds = roc_curve(labels_np,cosine_scores_np)
+
+    euc_auc = roc_auc_score(labels_np,euclidean_scores_np)
+    euc_fpr, euc_tpr, euc_thresholds = roc_curve(labels_np,euclidean_scores_np)
+    
     return {
-        "auc": auc_score,
-        "fpr": fpr.tolist(),
-        "tpr": tpr.tolist(),
-        "thresholds": thresholds.tolist(),
-        "scores": scores_np.tolist(),
+        "cosine": {
+            "auc": cos_auc,
+            "fpr": cos_fpr.tolist(),
+            "tpr": cos_tpr.tolist(),
+            "thresholds": cos_thresholds.tolist(),
+            "scores": cosine_scores_np.tolist(),
+        },
+        "euclidean": {
+            "auc": euc_auc,
+            "fpr": euc_fpr.tolist(),
+            "tpr": euc_tpr.tolist(),
+            "thresholds": euc_thresholds.tolist(),
+            "scores": euclidean_scores_np.tolist(),
+        },
         "labels": labels_np.tolist(),
-        "metric": metric,
     }
+
 
 def main():
 
@@ -305,11 +316,9 @@ def main():
         cosine_auc = None
         euclidean_auc = None
 
-        # ! THIS IS WHERE EVALUATION TAKES PLACE
-        cos_results = evaluate_verification(model, PAIRS_FILE, device, metric="cosine")
-        euc_results = evaluate_verification(model, PAIRS_FILE, device, metric="euclidean")
-        cosine_auc = cos_results["auc"]
-        euclidean_auc = euc_results["auc"]
+        results = evaluate_verification(model,PAIRS_FILE,device)
+        cosine_auc = results["cosine"]["auc"]
+        euclidean_auc = results["euclidean"]["auc"]
 
         scheduler.step(cosine_auc)
 
