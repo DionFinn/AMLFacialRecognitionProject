@@ -199,6 +199,134 @@
       "train_loss": 0.167642,
       "cosine_auc": 0.767389,
       "euclidean_auc": 0.767389
+    },
+    {
+      "run_id": "unknown",
+      "epoch": 1,
+      "timestamp": "2026-05-22T14:39:19.904816",
+      "train_loss": 0.256591,
+      "cosine_auc": 0.726818,
+      "euclidean_auc": 0.765439
+    },
+    {
+      "run_id": "unknown",
+      "epoch": 2,
+      "timestamp": "2026-05-22T14:51:32.247794",
+      "train_loss": 0.15957,
+      "cosine_auc": 0.754961,
+      "euclidean_auc": 0.766478
+    },
+    {
+      "run_id": "unknown",
+      "epoch": 3,
+      "timestamp": "2026-05-22T14:59:41.443451",
+      "train_loss": 0.131792,
+      "cosine_auc": 0.778393,
+      "euclidean_auc": 0.79296
+    },
+    {
+      "run_id": "unknown",
+      "epoch": 4,
+      "timestamp": "2026-05-22T15:06:26.312204",
+      "train_loss": 0.117064,
+      "cosine_auc": 0.780932,
+      "euclidean_auc": 0.809715
+    },
+    {
+      "run_id": "unknown",
+      "epoch": 5,
+      "timestamp": "2026-05-22T15:14:13.618886",
+      "train_loss": 0.108017,
+      "cosine_auc": 0.792373,
+      "euclidean_auc": 0.833357
+    },
+    {
+      "run_id": "unknown",
+      "epoch": 6,
+      "timestamp": "2026-05-22T15:21:56.589136",
+      "train_loss": 0.102505,
+      "cosine_auc": 0.803309,
+      "euclidean_auc": 0.840647
+    },
+    {
+      "run_id": "unknown",
+      "epoch": 7,
+      "timestamp": "2026-05-22T15:29:26.022777",
+      "train_loss": 0.097642,
+      "cosine_auc": 0.813548,
+      "euclidean_auc": 0.842885
+    },
+    {
+      "run_id": "unknown",
+      "epoch": 8,
+      "timestamp": "2026-05-22T15:36:08.879686",
+      "train_loss": 0.095007,
+      "cosine_auc": 0.812822,
+      "euclidean_auc": 0.844173
+    },
+    {
+      "run_id": "unknown",
+      "epoch": 9,
+      "timestamp": "2026-05-22T15:43:46.078485",
+      "train_loss": 0.091528,
+      "cosine_auc": 0.819904,
+      "euclidean_auc": 0.850639
+    },
+    {
+      "run_id": "unknown",
+      "epoch": 10,
+      "timestamp": "2026-05-22T15:51:27.285056",
+      "train_loss": 0.088674,
+      "cosine_auc": 0.820313,
+      "euclidean_auc": 0.851452
+    },
+    {
+      "run_id": "unknown",
+      "epoch": 1,
+      "timestamp": "2026-05-22T17:09:39.681146",
+      "train_loss": 0.259076,
+      "cosine_auc": 0.742134,
+      "euclidean_auc": 0.753831
+    },
+    {
+      "run_id": "unknown",
+      "epoch": 2,
+      "timestamp": "2026-05-22T17:16:39.253575",
+      "train_loss": 0.156396,
+      "cosine_auc": 0.7796,
+      "euclidean_auc": 0.787788
+    },
+    {
+      "run_id": "unknown",
+      "epoch": 3,
+      "timestamp": "2026-05-22T17:23:12.658094",
+      "train_loss": 0.13387,
+      "cosine_auc": 0.794589,
+      "euclidean_auc": 0.801484
+    },
+    {
+      "run_id": "unknown",
+      "epoch": 4,
+      "timestamp": "2026-05-22T17:29:45.167232",
+      "train_loss": 0.120191,
+      "cosine_auc": 0.791264,
+      "euclidean_auc": 0.827807
+    },
+    {
+      "run_id": "unknown",
+      "epoch": 5,
+      "timestamp": "2026-05-22T17:36:17.631102",
+      "train_loss": 0.111612,
+      "cosine_auc": 0.788957,
+      "euclidean_auc": 0.820745
+    },
+    {
+      "run_id": "unknown",
+      "epoch": 6,
+      "timestamp": "2026-05-22T17:43:04.443453",
+      "train_loss": 0.106293,
+      "cosine_auc": 0.803739,
+      "euclidean_auc": 0.834231
     }
   ]
 }

@@ -64,7 +64,7 @@ def depthwise_separable_conv(in_ch, out_ch): # only for readability purposes
 class MetricLearningModel(nn.Module):
     def __init__(self, embedding_dim=128, normalize=True):
         super().__init__()
-        self.normalize = normalize # True = cosine model, False = euclidean model
+        # self.normalize = normalize # True = cosine model, False = euclidean model
         self.features = nn.Sequential(
             depthwise_separable_conv(3, 32),
             nn.MaxPool2d(2),
@@ -90,13 +90,10 @@ class MetricLearningModel(nn.Module):
         x = self.features(x)
         x = x.flatten(1)
         x = self.embedding(x)
-        if self.normalize:
-            x = F.normalize(x, p=2.0, dim=1) # DO NOT CHANGE 2.0 TO INT
+        # if self.normalize:
+        #     x = F.normalize(x, p=2.0, dim=1) # DO NOT CHANGE 2.0 TO INT
         return x
-        # TODO remove scaling
-        # return x * self.scale # scaled unit vector
         
-
 # transforming datasset for Triplet method for metric learning
 # ONLY constructs file paths
 class TripletDataset(Dataset):
@@ -365,7 +362,16 @@ def main():
 
             tqdm.write(f"Best AUC model saved with (cosine AUC: {cosine_auc:.4f})")
 
-        with torch.no_grad(): # test
+        # ! TEST - REMOVE LATER
+        # scripted = torch.jit.script(model)
+        # print("saving...")
+        # scripted.save(
+        #     os.path.join(ARTIFACTS_DIR, "metric_learning_scripted.pt")
+        # )
+        # print("saved")
+        # ! TEST - REMOVE LATER
+
+        with torch.no_grad(): # TEST
             sample = next(iter(loader))[0][:32].to(device)
             emb = model(sample)
             emb_std = emb.std(dim=0).mean().item()
