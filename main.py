@@ -8,9 +8,15 @@ antispoof_raw = tf.keras.models.load_model("./model/models/antispoof_raw.keras")
 antispoof_transfer = tf.keras.models.load_model("./model/models/antispoof_transfer.keras")
 antispoof_v3 = tf.keras.models.load_model("./model/models/antispoof_v3.keras")
 
+if not antispoof_raw:
+    ValueError("model not found")
+if not antispoof_transfer:
+    ValueError("model not found")
+if not antispoof_v3:
+    ValueError("model not found")
 
 def main():
-    cap = cv.VideoCapture(0)
+    cap = cv.VideoCapture(0) # 0 works for my camera, but you may need to change it to 1 or 2 if you have multiple cameras
     if not cap.isOpened():
         print("Cannot open camera")
         exit()
