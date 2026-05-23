@@ -1,12 +1,17 @@
 import numpy as np
 import cv2 as cv
 import tensorflow as tf
+from collections import deque
 
 from model.antispoof_preprocess import predict_liveness
 
 antispoof_raw = tf.keras.models.load_model("./model/models/antispoof_raw.keras")
 antispoof_transfer = tf.keras.models.load_model("./model/models/antispoof_transfer.keras")
-antispoof_v3 = tf.keras.models.load_model("./model/models/antispoof_v3.keras")
+
+if not antispood_raw:
+    ValueError("model not found")
+if not antispoof_transfer:
+    ValueError("model not found")
 
 
 def main():
@@ -20,12 +25,20 @@ def main():
         if not ret:
             print("Can't receive frame. Exiting...")
             break
+        
+        label, score = predict_liveness(antispoof_transfer, frame, threshold=0.7)
 
-        label, score = predict_liveness(antispoof_v3, frame, threshold=0.55)
-
-        color = (0, 255, 0) if label == "Real" else (0, 0, 255)
-        cv.putText(frame, f"{label}: {score:.2f}", (30, 50),
-                   cv.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+        cv.putText(
+            frame,
+            f"{label}: {score:.2f}",
+            (30, 50),
+            cv.FONT_HERSHEY_SIMPLEX,
+            1,
+            (0, 255, 0),
+            2
+        )
+        
+        gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
         
         cv.imshow('frame', frame)
         if cv.waitKey(1) == ord('q'):
