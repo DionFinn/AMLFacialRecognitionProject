@@ -3,3 +3,5 @@ env/
 .venv/
 .data/
 data/
+
+test_images/
