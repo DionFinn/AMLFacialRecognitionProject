@@ -3,3 +3,5 @@ env/
 .venv/
 .data/
 data/
+.DS_Store.DS_Store
+model/models
