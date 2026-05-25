@@ -5,3 +5,6 @@ env/
 data/
 
 test_images/
+__pycache__
+.DS_Store.DS_Store
+model/models
