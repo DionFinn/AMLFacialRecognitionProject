@@ -1,11 +1,11 @@
 {
   "meta": {
     "started_at": "2026-05-19T19:48:32.976756",
-    "embedding_dim": 128,
+    "embedding_dim": 256,
     "batch_size": 32,
     "optimizer": "Adam",
     "lr": 0.001,
-    "margin": 0.3
+    "margin": 0.5
   },
   "epochs": [
     {
@@ -327,6 +327,78 @@
       "train_loss": 0.106293,
       "cosine_auc": 0.803739,
       "euclidean_auc": 0.834231
+    },
+    {
+      "run_id": "unknown",
+      "epoch": 1,
+      "timestamp": "2026-05-25T23:11:19.973595",
+      "train_loss": 0.252972,
+      "cosine_auc": 0.754394,
+      "euclidean_auc": 0.758257
+    },
+    {
+      "run_id": "unknown",
+      "epoch": 2,
+      "timestamp": "2026-05-25T23:19:37.736909",
+      "train_loss": 0.162969,
+      "cosine_auc": 0.757931,
+      "euclidean_auc": 0.736579
+    },
+    {
+      "run_id": "unknown",
+      "epoch": 3,
+      "timestamp": "2026-05-25T23:27:26.148772",
+      "train_loss": 0.139039,
+      "cosine_auc": 0.791326,
+      "euclidean_auc": 0.782614
+    },
+    {
+      "run_id": "unknown",
+      "epoch": 1,
+      "timestamp": "2026-05-25T23:42:28.279830",
+      "train_loss": 0.181802,
+      "cosine_auc": 0.737551,
+      "euclidean_auc": 0.74956
+    },
+    {
+      "run_id": "unknown",
+      "epoch": 2,
+      "timestamp": "2026-05-25T23:48:57.024694",
+      "train_loss": 0.103309,
+      "cosine_auc": 0.763665,
+      "euclidean_auc": 0.792465
+    },
+    {
+      "run_id": "unknown",
+      "epoch": 3,
+      "timestamp": "2026-05-25T23:56:27.918294",
+      "train_loss": 0.08689,
+      "cosine_auc": 0.779152,
+      "euclidean_auc": 0.809115
+    },
+    {
+      "run_id": "unknown",
+      "epoch": 1,
+      "timestamp": "2026-05-26T00:09:18.871262",
+      "train_loss": 0.410173,
+      "cosine_auc": 0.747198,
+      "euclidean_auc": 0.720468
+    },
+    {
+      "run_id": "unknown",
+      "epoch": 2,
+      "timestamp": "2026-05-26T00:15:54.941480",
+      "train_loss": 0.255821,
+      "cosine_auc": 0.777326,
+      "euclidean_auc": 0.762351
+    },
+    {
+      "run_id": "unknown",
+      "epoch": 3,
+      "timestamp": "2026-05-26T00:23:50.002301",
+      "train_loss": 0.216067,
+      "cosine_auc": 0.791169,
+      "euclidean_auc": 0.790364
     }
   ]
 }

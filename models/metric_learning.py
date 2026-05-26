@@ -45,8 +45,8 @@ IMG_SIZE = (224, 224)
 EPOCHS = 20
 BATCH_SIZE = 32
 LR = 1e-3 # had it at 1e-5 but was too little (score of around 0.63)
-MARGIN = 0.3 # TODO EXPERIMENT WITH MARGINS
-EMBEDDING_DIM = 128 # 128 dimensional plot
+MARGIN = 0.5 # TODO EXPERIMENT WITH MARGINS
+EMBEDDING_DIM = 256 # 128 dimensional plot
 NUM_WORKERS = 8 # specific to my GPU - may change to lower/higher
 
 def depthwise_separable_conv(in_ch, out_ch): # only for readability purposes
@@ -314,6 +314,9 @@ def main():
         euclidean_auc = None
 
         results = evaluate_verification(model,PAIRS_FILE,device)
+        with open(os.path.join(ARTIFACTS_DIR, "evaluation_results.json"), "w") as f:
+            json.dump(results, f, indent=2)
+
         cosine_auc = results["cosine"]["auc"]
         euclidean_auc = results["euclidean"]["auc"]
 
