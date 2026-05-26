@@ -3,5 +3,9 @@ env/
 .venv/
 .data/
 data/
+
+test_images/
 data2/
+__pycache__/
+.DS_Store
 model/models
