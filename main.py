@@ -3,21 +3,23 @@ import cv2 as cv
 import numpy
 import torch
 import torch.nn.functional as F
-# from facenet_pytorch import MTCNN
 from mtcnn import MTCNN
 import tensorflow as tf
-from model.antispoof_preprocess import predict_liveness
+from model.anti_spoof.antispoof_preprocess import predict_liveness
 
 
-try: 
-    antispoof_raw = tf.keras.models.load_model("./model/models/antispoof_raw.keras")
-    antispoof_transfer = tf.keras.models.load_model("./model/models/antispoof_transfer.keras")
-    antispoof_v3 = tf.keras.models.load_model("./model/models/antispoof_v3.keras")
-except Exception as e:
-    print(f"Model not found: ", e)
+# try: 
+#     # antispoof_raw = tf.keras.models.load_model("model/models/antispoof_raw.keras")
+#     antispoof_transfer = tf.keras.models.load_model("model/models/antispoof_transfer.keras")
+#     # antispoof_v3 = tf.keras.models.load_model("model/models/antispoof_v3.keras")
+#     print("anti spoof models loaded")
+# except Exception as e:
+#     print(f"Model not found: ", e)
+
+# antispoof_transfer = tf.keras.models.load_model("model/models/antispoof_transfer.keras", compile=False)
 
 face_db = {} # TODO save into json file instead
-THRESHOLD = 0.90 
+THRESHOLD = 0.70 
 
 # switch to gpu and load model
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -25,7 +27,9 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 # MTCNN initialisation
 # reference: https://github.com/ipazc/mtcnn
 mtcnn = MTCNN()
-model = torch.jit.load("models/artifacts/metric_learning_scripted.pt",map_location=device)
+
+model = torch.jit.load("model/models/metric_learning_scripted.pt",map_location=device)
+# model = torch.jit.load("model/models/MobileViT_supervised.pt",map_location=device)
 
 model.eval()
 model.to(device)
@@ -172,7 +176,7 @@ def main():
             register(cap, username)
 
         # When everything done, release the capture
-        # label, score = predict_liveness(antispoof_v3, frame, threshold=0.55)
+        # label, score = predict_liveness(antispoof_transfer, frame, threshold=0.55)
 
         # color = (0, 255, 0) if label == "Real" else (0, 0, 255)
         # cv.putText(frame, f"{label}: {score:.2f}", (30, 50),
