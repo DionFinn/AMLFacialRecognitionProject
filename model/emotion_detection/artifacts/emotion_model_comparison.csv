@@ -1,0 +1,3 @@
+Model,Training Approach,Accuracy
+CNN Baseline,Trained from scratch,0.6551499348109517
+ResNet34 Transfer Learning,Transfer learning with partial fine-tuning,0.8308344198174706
