@@ -3,36 +3,43 @@ import cv2 as cv
 import numpy
 import torch
 import torch.nn.functional as F
+import json
+# from facenet_pytorch import MTCNN
 from mtcnn import MTCNN
 import tensorflow as tf
 from model.anti_spoof.antispoof_preprocess import predict_liveness
+from collections import deque
 
-
-# try: 
-#     # antispoof_raw = tf.keras.models.load_model("model/models/antispoof_raw.keras")
-#     antispoof_transfer = tf.keras.models.load_model("model/models/antispoof_transfer.keras")
-#     # antispoof_v3 = tf.keras.models.load_model("model/models/antispoof_v3.keras")
-#     print("anti spoof models loaded")
-# except Exception as e:
-#     print(f"Model not found: ", e)
-
-# antispoof_transfer = tf.keras.models.load_model("model/models/antispoof_transfer.keras", compile=False)
-
-face_db = {} # TODO save into json file instead
-THRESHOLD = 0.70 
+try: 
+    antispoof_raw = tf.keras.models.load_model("model/models/antispoof_raw.keras")
+    antispoof_transfer = tf.keras.models.load_model("model/models/antispoof_transfer.keras")
+    antispoof_v3 = tf.keras.models.load_model("model/models/antispoof_v3.keras")
+except Exception as e:
+    print(f"Model not found: ", e)
 
 # switch to gpu and load model
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
+
+THRESHOLD = 0.90 
+face_db = {}
+spoof_queue = deque(maxlen=5)
+
 # MTCNN initialisation
 # reference: https://github.com/ipazc/mtcnn
 mtcnn = MTCNN()
-
-model = torch.jit.load("model/models/metric_learning_scripted.pt",map_location=device)
-# model = torch.jit.load("model/models/MobileViT_supervised.pt",map_location=device)
+model = torch.jit.load("model/models/metric_learning_scripted_v2.pt",map_location=device)
 
 model.eval()
 model.to(device)
+
+def update_gallery(name, current_emb, alpha=0.90):
+    """update stored face emb with live embeddings"""
+    if name in face_db:
+        stored_emb = face_db[name]
+        # linear interpolation between old and new embedding
+        updated_emb = (alpha*stored_emb) + ((1.0 - alpha)*current_emb)
+        face_db[name] = F.normalize(updated_emb, p=2, dim=0)
 
 def preprocess(face_img):
     face = cv.resize(face_img, (224, 224))
@@ -73,7 +80,7 @@ def extract_face(frame):
 
     return face, (x, y, w, h)
 
-def register(cap, name, samples=20): # could be 10 but less images to work weith
+def register(cap, name, samples=1): # could be 10 but less images to work weith
     embeddings = []
 
     print(f"Registering {name}")
@@ -113,6 +120,7 @@ def register(cap, name, samples=20): # could be 10 but less images to work weith
     mean_embedding = F.normalize(mean_embedding, p=2, dim=0)
     # face_db[name] = embeddings
     face_db[name] = mean_embedding
+    # save_face_db()
     print(f"{name} registered successfully")
 
 def cosine_similarity_score(emb_a, emb_b):
@@ -136,9 +144,9 @@ def recognition(frame):
         # print(f"{name}: {score:.4f}")
 
     if best_score >= THRESHOLD:
-        return best_name, best_score, box
+        return best_name, best_score, box, emb
 
-    return "unknown", best_score, box
+    return "unknown", best_score, box, emb
 
 
 def main():
@@ -157,14 +165,28 @@ def main():
         if not ret:
             print("Can't receive frame. Exiting...")
             break
-
-        name, score, box = recognition(frame)
-
+        
+        # ! ======================= FACE-RECOGNITION =======================
+        name, recognition_score, box, current_emb = recognition(frame)
         if box is not None:
             x, y, w, h = box
             cv.rectangle(frame,(x, y),(x + w, y + h),(0, 255, 0),2)
 
-        cv.putText(frame,f"{name} ({score:.2f})",(50, 50), cv.FONT_HERSHEY_SIMPLEX,1,(0, 255, 0),2)
+        cv.putText(frame,f"{name} ({recognition_score:.2f})",(50, 50), 
+                   cv.FONT_HERSHEY_SIMPLEX,1,(0, 255, 0), 2)
+        
+        # ! ======================= ANTI-SPOOF =======================
+        label, spoof_score = predict_liveness(antispoof_transfer, frame, threshold=0.55)
+        spoof_queue.append(label)
+
+        majority_label = max(set(spoof_queue), key=spoof_queue.count)
+
+        color = (0, 255, 0) if label == "Real" else (0, 0, 255)
+        cv.putText(frame, f"{majority_label}: {spoof_score:.2f}", (20, 100),
+                   cv.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+        
+        # ! ======================= DYNAMIC GALLERY ADAPTATION =======================
+        
 
         cv.imshow("Face Recognition Interface", frame)
         key = cv.waitKey(1) & 0xFF
@@ -174,17 +196,16 @@ def main():
         elif key == ord("r"):
             username = input("Enter name: ")
             register(cap, username)
-
-        # When everything done, release the capture
-        # label, score = predict_liveness(antispoof_transfer, frame, threshold=0.55)
-
-        # color = (0, 255, 0) if label == "Real" else (0, 0, 255)
-        # cv.putText(frame, f"{label}: {score:.2f}", (30, 50),
-        #            cv.FONT_HERSHEY_SIMPLEX, 1, color, 2)
-
-        # cv.imshow('frame', frame)
-        # if cv.waitKey(1) == ord('q'):
-        #     break
+        elif key == ord("s"):
+            if name == "No face":
+                print("[ERROR] No face detected. Look at the camera and try again.")
+            elif name == "unknown":
+                print("[ERROR] Cannot adapt template for 'unknown'. Register this person first using 'R'.")
+            elif majority_label != "Real":
+                print(f"[SECURITY] Adaptation blocked! Liveness state is currently: {majority_label}")
+            else:
+                update_gallery(name, current_emb, alpha=0.90)
+                print(f"[SUCCESS] Handled appearance drift! Stored template for '{name}' updated successfully.")
 
     cap.release()
     cv.destroyAllWindows()
