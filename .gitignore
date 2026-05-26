@@ -3,6 +3,9 @@ env/
 .venv/
 .data/
 data/
+
+test_images/
+__pycache__
 data2/
 __pycache__/
 .DS_Store.DS_Store
