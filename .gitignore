@@ -4,3 +4,6 @@ env/
 .data/
 data/
 data2/
+__pycache__/
+.DS_Store.DS_Store
+model/models
