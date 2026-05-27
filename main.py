@@ -148,12 +148,26 @@ def recognition(frame):
         return best_name, best_score, box
 
     return "unknown", best_score, box
+import tensorflow as tf
 
+from model.antispoof_preprocess import predict_liveness
+
+antispoof_raw = tf.keras.models.load_model("./model/models/antispoof_raw.keras")
+antispoof_transfer = tf.keras.models.load_model("./model/models/antispoof_transfer.keras")
+antispoof_v3 = tf.keras.models.load_model("./model/models/antispoof_v3.keras")
+
+if not antispoof_raw:
+    ValueError("model not found")
+if not antispoof_transfer:
+    ValueError("model not found")
+if not antispoof_v3:
+    ValueError("model not found")
 
 def main():
     print("test main")
 
     cap = cv.VideoCapture(0)
+    cap = cv.VideoCapture(0) # 0 works for my camera, but you may need to change it to 1 or 2 if you have multiple cameras
     if not cap.isOpened():
         print("Cannot open camera")
         exit()
@@ -167,8 +181,10 @@ def main():
         ret, frame = cap.read()
 
         # if frame is read correctly ret is True
+    while True:
+        ret, frame = cap.read()
         if not ret:
-            print("Can't receive frame (stream end?). Exiting ...")
+            print("Can't receive frame. Exiting...")
             break
 
         name, score, box = recognition(frame)
@@ -199,6 +215,16 @@ def main():
             # register(cap, "PTwo")
 
     # When everything done, release the capture
+        label, score = predict_liveness(antispoof_v3, frame, threshold=0.55)
+
+        color = (0, 255, 0) if label == "Real" else (0, 0, 255)
+        cv.putText(frame, f"{label}: {score:.2f}", (30, 50),
+                   cv.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+
+        cv.imshow('frame', frame)
+        if cv.waitKey(1) == ord('q'):
+            break
+
     cap.release()
     cv.destroyAllWindows()
 
