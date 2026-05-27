@@ -11,7 +11,7 @@ Team Member Names and Student ID:
 Data source:
 - [11-785-Fall-20-Homework-2: Part 2](https://www.kaggle.com/competitions/11-785-fall-20-homework-2-part-2/overview): for metric learning and supervised learning models training
 - [FER-2013](https://www.kaggle.com/datasets/msambare/fer2013): for emotion detection model training
-- [](): for anti-spoofing training
+- [LCC_FASD_CASIA](https://www.kaggle.com/datasets/ahmedruhshan/lcc-fasd-casia-combined/data): for anti-spoofing training
 ```bash
 
 ```
