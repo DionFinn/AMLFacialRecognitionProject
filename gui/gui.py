@@ -13,6 +13,8 @@ import torchvision.models as models
 import tensorflow as tf
 from antispoof_preprocess import predict_liveness
 from emotion_innovation import load_emotion_system, predict_emotion
+from mtcnn import MTCNN
+import time
 
 # session intiialisation
 if "register_flag" not in st.session_state:
@@ -23,6 +25,9 @@ if "adapt_flag" not in st.session_state:
 
 # architecture layout
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# Initialize MTCNN globally for high-fidelity alignment
+detector_mtcnn = MTCNN()
 
 class MobileViT(nn.Module):
     def __init__(self, num_classes=4000):
@@ -79,20 +84,44 @@ def load_selected_model(model_choice):
 
 def extract_embedding(model, image_cv2, face_cascade, transform, device, model_choice):
     """Safely crops with padding and extracts the standardized embedding vector."""
-    gray = cv2.cvtColor(image_cv2, cv2.COLOR_BGR2GRAY)
-    faces = face_cascade.detectMultiScale(gray, 1.1, 5)
+    h_img, w_img, _ = image_cv2.shape
+    img_rgb = cv2.cvtColor(image_cv2, cv2.COLOR_BGR2RGB)
     
-    if len(faces) == 0: return None, None
+    detections = detector_mtcnn.detect_faces(img_rgb)
+    if len(detections) == 0: return None, None
     
-    x, y, w, h = max(faces, key=lambda b: b[2]*b[3])
+    detection = max(detections, key=lambda x: x["confidence"])
+    if detection["confidence"] < 0.90: return None, None
+    
+    x, y, w, h = detection["box"]
+    x, y = max(0, x), max(0, y)
+    w, h = min(w, w_img - x), min(h, h_img - y)
+    
+    keypoints = detection["keypoints"]
+    left_eye_kp = keypoints["left_eye"]
+    right_eye_kp = keypoints["right_eye"]
+    
+    screen_eyes = sorted([left_eye_kp, right_eye_kp], key=lambda e: e[0])
+    left_eye_coords = screen_eyes[0]
+    right_eye_coords = screen_eyes[1]
+    
+    dx = right_eye_coords[0] - left_eye_coords[0]
+    dy = right_eye_coords[1] - left_eye_coords[1]
+    angle = np.degrees(np.arctan2(dy, dx))
+    
+    eye_center = (int((left_eye_coords[0] + right_eye_coords[0]) / 2), 
+                  int((left_eye_coords[1] + right_eye_coords[1]) / 2))
+    
+    rotation_matrix = cv2.getRotationMatrix2D(eye_center, angle, scale=1.0)
+    aligned_img = cv2.warpAffine(image_cv2, rotation_matrix, (w_img, h_img), flags=cv2.INTER_CUBIC)
     
     pad_w, pad_h = int(w * 0.05), int(h * 0.05)
     y1 = max(0, y - pad_h)
-    y2 = min(image_cv2.shape[0], y + h + pad_h)
+    y2 = min(h_img, y + h + pad_h)
     x1 = max(0, x - pad_w)
-    x2 = min(image_cv2.shape[1], x + w + pad_w)
+    x2 = min(w_img, x + w + pad_w)
+    face_crop = aligned_img[y1:y2, x1:x2]
     
-    face_crop = image_cv2[y1:y2, x1:x2]
     if face_crop.size == 0: return None, None
     
     img_rgb = cv2.cvtColor(face_crop, cv2.COLOR_BGR2RGB)
@@ -118,17 +147,26 @@ def precompute_database_embeddings(model_choice, registered_folder):
     
     if not os.path.exists(registered_folder): return known_embeddings
         
-    for file_name in os.listdir(registered_folder):
-        if file_name.lower().endswith(('.png', '.jpg', '.jpeg')):
-            img_path = os.path.join(registered_folder, file_name)
-            img = cv2.imread(img_path)
-            if img is None: continue
-            
-            emb, _ = extract_embedding(model, img, face_cascade, img_transform, device, model_choice)
-            if emb is not None:
-                # Removed the accidental st.write string that was lingering here
-                name = os.path.splitext(file_name)[0]
-                known_embeddings[name] = emb
+    # loop through folders per person
+    for person_name in os.listdir(registered_folder):
+        person_dir = os.path.join(registered_folder, person_name)
+        if not os.path.isdir(person_dir): continue
+        
+        person_embs = []
+        for file_name in os.listdir(person_dir):
+            if file_name.lower().endswith(('.png', '.jpg', '.jpeg')):
+                img_path = os.path.join(person_dir, file_name)
+                img = cv2.imread(img_path)
+                if img is None: continue
+                
+                emb, _ = extract_embedding(model, img, face_cascade, img_transform, device, model_choice)
+                if emb is not None:
+                    person_embs.append(emb)
+                    
+        # Multi-Template Vector Space Aggregation
+        if person_embs:
+            mean_emb = torch.mean(torch.stack(person_embs), dim=0)
+            known_embeddings[person_name] = F.normalize(mean_emb, p=2, dim=1)
                 
     return known_embeddings
 
@@ -212,7 +250,11 @@ if run_camera:
                 os.makedirs(REGISTERED_DIR, exist_ok=True)
                 # Sanitize text characters
                 clean_name = "".join([c for c in reg_name if c.isalnum() or c in (' ', '_', '-')]).strip()
-                file_target_path = os.path.join(REGISTERED_DIR, f"{clean_name}.jpg")
+                
+                # UPGRADE 1: Isolate enrollment into a dedicated subfolder
+                person_folder = os.path.join(REGISTERED_DIR, clean_name)
+                os.makedirs(person_folder, exist_ok=True)
+                file_target_path = os.path.join(person_folder, f"reg_{int(time.time())}.jpg")
                 
                 # write the clean frame directly to your target directory
                 cv2.imwrite(file_target_path, raw_frame)
@@ -263,14 +305,35 @@ if run_camera:
                 elif spoof_label != "Real":
                     st.toast(f"Security Alert: Blocked adaptation for an unverified/spoofed frame ({spoof_label})")
                 else:
-                    # target the existing registered image file
-                    file_target_path = os.path.join(REGISTERED_DIR, f"{identity}.jpg")
-                    # overwrite it with the fresh raw frame
-                    cv2.imwrite(file_target_path, raw_frame)
-                    # evict stale embeddings cache so Streamlit parses the new image look
-                    st.cache_data.clear()
-                    st.toast(f"Appearance updated for {identity}! Re-indexing database...")
-                    st.rerun()
+                    # quality-gated motion blur check (Laplacian Variance method)
+                    face_crop = raw_frame[y:y+h, x:x+w]
+                    if face_crop.size > 0:
+                        gray_crop = cv2.cvtColor(face_crop, cv2.COLOR_BGR2GRAY)
+                        blur_score = cv2.Laplacian(gray_crop, cv2.CV_64F).var()
+                        
+                        if blur_score < 70.0:
+                            st.toast(f"Rescan denied: Image too blurry ({blur_score:.1f}). Please hold still.")
+                        else:
+                            # store multiple snapshots inside the identity folder
+                            person_folder = os.path.join(REGISTERED_DIR, identity)
+                            os.makedirs(person_folder, exist_ok=True)
+                            
+                            file_target_path = os.path.join(person_folder, f"adapt_{int(time.time())}.jpg")
+                            # write the clean frame directly to your target directory
+                            cv2.imwrite(file_target_path, raw_frame)
+                            
+                            # enforce a max 5-file rolling gallery limitation to save storage
+                            history_files = sorted(
+                                [os.path.join(person_folder, f) for f in os.listdir(person_folder) if f.lower().endswith(('.png', '.jpg', '.jpeg'))],
+                                key=os.path.getmtime
+                            )
+                            while len(history_files) > 5:
+                                os.remove(history_files.pop(0))
+                            
+                            # evict stale embeddings cache so Streamlit parses the new image look
+                            st.cache_data.clear()
+                            st.toast(f"Appearance updated for {identity}! Re-indexing database...")
+                            st.rerun()
     
         if current_emb is not None and bbox is not None:
             if avg_probs is not None:
