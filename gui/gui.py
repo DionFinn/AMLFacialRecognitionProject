@@ -14,15 +14,14 @@ import tensorflow as tf
 from antispoof_preprocess import predict_liveness
 from emotion_innovation import load_emotion_system, predict_emotion
 
-# ----------------------------------------------------
-# 0. Session State Initialization
-# ----------------------------------------------------
+# session intiialisation
 if "register_flag" not in st.session_state:
     st.session_state.register_flag = False
+# ! DYNAMIC GALLERY ADAPTATION INNOVATION
+if "adapt_flag" not in st.session_state:
+    st.session_state.adapt_flag = False
 
-# ----------------------------------------------------
-# 1. Architectural Layout Definitions
-# ----------------------------------------------------
+# architecture layout
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class MobileViT(nn.Module):
@@ -49,9 +48,7 @@ class EfficientNetWrapper(nn.Module):
         x = torch.flatten(x, 1)
         return self.base_model.classifier(x)
 
-# ----------------------------------------------------
-# 2. Optimized Resource Caching & Standardized Extraction
-# ----------------------------------------------------
+# caching and optimisation
 @st.cache_resource
 def load_base_assets():
     transform = transforms.Compose([
@@ -60,19 +57,20 @@ def load_base_assets():
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
     face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+    # eye_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_eye.xml')
     return transform, face_cascade
 
 @st.cache_resource
 def load_selected_model(model_choice):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if model_choice == "MobileViT-XS (Transformer Hybrid)":
-        model = torch.load("../models/MobileViT_supervised.pt", map_location=device, weights_only=False)
+        model = torch.load("../model/models/MobileViT_supervised.pt", map_location=device, weights_only=False)
         embedding_dim = 384
     elif model_choice == "metric_learning":
-        model = torch.load("../models/artifacts/metric_learning_scripted.pt", map_location=device, weights_only=False)
+        model = torch.load("../model/models/metric_learning_scripted_v3.pt", map_location=device, weights_only=False)
         embedding_dim = 384
     else:
-        model = torch.load("../models/EfficientNet_supervised.pt", map_location=device, weights_only=False)
+        model = torch.load("../model/models/EfficientNet_supervised.pt", map_location=device, weights_only=False)
         embedding_dim = 1280
         
     model = model.to(device)
@@ -134,19 +132,17 @@ def precompute_database_embeddings(model_choice, registered_folder):
                 
     return known_embeddings
 
-# ----------------------------------------------------
-# 3. GUI Layout & Sidebar Option Selectors
-# ----------------------------------------------------
-st.title("🪪 Dual-Engine Face Verification System")
+# ! MAIN GUI LAYOUT
+st.title("Face Recognition and Verification System")
 
 selected_engine = st.sidebar.selectbox("Active Model Engine", ("MobileViT-XS (Transformer Hybrid)", "EfficientNet-B0 (Pure CNN)", "metric_learning"))
 threshold = st.sidebar.slider("Similarity Threshold", min_value=0.50, max_value=0.95, value=0.70, step=0.01)
 run_camera = st.sidebar.checkbox("Turn On Camera Feed")
 
-# --- NEW: Face Registration UI Controls ---
+# registering new identity
 st.sidebar.markdown("---")
-st.sidebar.subheader("👤 Register New Identity")
-reg_name = st.sidebar.text_input("Enter Full Name", placeholder="e.g., John Doe")
+st.sidebar.subheader("Register New Identity")
+reg_name = st.sidebar.text_input("Enter Full Name", placeholder="e.g., John Cena")
 
 if st.sidebar.button("Capture & Save Face"):
     if not run_camera:
@@ -157,7 +153,14 @@ if st.sidebar.button("Capture & Save Face"):
         st.session_state.register_flag = True
         st.sidebar.info("Scanning feed for a valid face layout...")
 
-REGISTERED_DIR = "../registered people"
+# dynamic gallery innovation
+if st.sidebar.button("Adapt Profile (Rescan)"):
+    if not run_camera:
+        st.sidebar.error("Camera must be active to perform profile updates.")
+    else:
+        st.session_state.adapt_flag = True
+
+REGISTERED_DIR = "../registered_people"
 img_transform, face_cascade = load_base_assets()
 
 with st.spinner(f"Swapping engine context to {selected_engine}..."):
@@ -165,18 +168,18 @@ with st.spinner(f"Swapping engine context to {selected_engine}..."):
     known_faces = precompute_database_embeddings(selected_engine, REGISTERED_DIR)
 
     emotion_system = load_emotion_system(
-        model_path="../models/emotion_resnet34_transfer.pth",
+        model_path="../model/models/emotion_resnet34_transfer.pth",
         confidence_threshold=0.45,
         smoothing_window=8
     )
 
     antispoof_transfer = None
     try:
-        antispoof_transfer = tf.keras.models.load_model("../models/antispoof_transfer.keras")
+        antispoof_transfer = tf.keras.models.load_model("../model/models/antispoof_transfer.keras")
     except Exception as e:
         print("Anti-spoofing model not found:", e)
 
-st.info(f"⚡ Core Active: {selected_engine} | Vector Space: {emb_dimension}D")
+st.info(f"Core Active: {selected_engine} | Vector Space: {emb_dimension}D")
 frame_placeholder = st.empty()
 
 st.sidebar.subheader("Emotion Output")
@@ -190,16 +193,13 @@ if st.sidebar.button("Reset Emotion Summary"):
     emotion_system.reset_summary()
     st.sidebar.success("Emotion summary reset")
 
-# ----------------------------------------------------
-# 4. Processing Loop
-# ----------------------------------------------------
+# main processing loop
 if run_camera:
     cap = cv2.VideoCapture(0) 
     while cap.isOpened() and run_camera:
         ret, frame = cap.read()
         if not ret: break
             
-        # Standard copy for pure raw disk-saving context before we draw overlay graphics
         raw_frame = frame.copy()
             
         current_emb, bbox = extract_embedding(model, frame, face_cascade, img_transform, device, selected_engine)
@@ -207,20 +207,20 @@ if run_camera:
         if current_emb is not None and bbox is not None:
             x, y, w, h = bbox
             
-            # --- NEW: Handle Identity Registration Intercept ---
+            # * IDENTITY REGISTRATION
             if st.session_state.register_flag:
                 os.makedirs(REGISTERED_DIR, exist_ok=True)
-                # Sanitize text characters to guarantee filename integrity
+                # Sanitize text characters
                 clean_name = "".join([c for c in reg_name if c.isalnum() or c in (' ', '_', '-')]).strip()
                 file_target_path = os.path.join(REGISTERED_DIR, f"{clean_name}.jpg")
                 
-                # Write the clean frame directly to your target directory
+                # write the clean frame directly to your target directory
                 cv2.imwrite(file_target_path, raw_frame)
                 st.session_state.register_flag = False
                 
-                # CRITICAL STEP: Clear cached data to bind new target to current embedding vector arrays
+                # clear cached data to bind new target to current embedding vector arrays
                 st.cache_data.clear()
-                st.toast(f"✅ Successfully registered {clean_name} into system space!", icon="👤")
+                st.toast(f"Successfully registered {clean_name} into system space!")
                 st.rerun()
 
             cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 165, 255), 2)
@@ -234,7 +234,7 @@ if run_camera:
                     highest_score = score
                     if score >= threshold:
                         identity = name
-            
+
             emotion, emotion_confidence, avg_probs = predict_emotion(emotion_system, frame, bbox)
 
             if antispoof_transfer is not None:
@@ -253,6 +253,24 @@ if run_camera:
             cv2.putText(frame, liveness_label, (x, y - 55), cv2.FONT_HERSHEY_SIMPLEX, 0.6, liveness_color, 2)
             cv2.putText(frame, identity_label, (x, y - 35), cv2.FONT_HERSHEY_SIMPLEX, 0.6, identity_color, 2)
             cv2.putText(frame, emotion_label, (x, y - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.6, emotion_color, 2)
+
+            # rescanning module
+            if st.session_state.adapt_flag:
+                st.session_state.adapt_flag = False # clear flag
+                
+                if identity == "Unknown":
+                    st.toast("Rescan failed: No recognised identity on screen!")
+                elif spoof_label != "Real":
+                    st.toast(f"Security Alert: Blocked adaptation for an unverified/spoofed frame ({spoof_label})")
+                else:
+                    # target the existing registered image file
+                    file_target_path = os.path.join(REGISTERED_DIR, f"{identity}.jpg")
+                    # overwrite it with the fresh raw frame
+                    cv2.imwrite(file_target_path, raw_frame)
+                    # evict stale embeddings cache so Streamlit parses the new image look
+                    st.cache_data.clear()
+                    st.toast(f"Appearance updated for {identity}! Re-indexing database...")
+                    st.rerun()
     
         if current_emb is not None and bbox is not None:
             if avg_probs is not None:
