@@ -2,6 +2,8 @@ torch
 torchvision
 torchaudio
 opencv-python
+keras==3.14.0
+tensorflow==2.21.0
 numpy
 pandas
 matplotlib
@@ -10,4 +12,5 @@ tqdm
 pillow
 jupyter
 seaborn
-facenet_pytorch 
+streamlit
+timm
