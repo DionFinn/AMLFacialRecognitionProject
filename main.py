@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from mtcnn import MTCNN
 
 face_db = {}
-THRESHOLD = 0.90 # TODO adjust as needed
+THRESHOLD = 0.9 # TODO adjust as needed
 
 # switch to gpu and load model
 device = "cuda" if torch.cuda.is_available() else "cpu"

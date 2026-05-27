@@ -314,6 +314,9 @@ def main():
         euclidean_auc = None
 
         results = evaluate_verification(model,PAIRS_FILE,device)
+        with open(os.path.join(ARTIFACTS_DIR, "evaluation_results.json"), "w") as f:
+            json.dump(results, f, indent=2)
+
         cosine_auc = results["cosine"]["auc"]
         euclidean_auc = results["euclidean"]["auc"]
 
