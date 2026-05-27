@@ -12,8 +12,45 @@ Data source:
 - [11-785-Fall-20-Homework-2: Part 2](https://www.kaggle.com/competitions/11-785-fall-20-homework-2-part-2/overview): for metric learning and supervised learning models training
 - [FER-2013](https://www.kaggle.com/datasets/msambare/fer2013): for emotion detection model training
 - [LCC_FASD_CASIA](https://www.kaggle.com/datasets/ahmedruhshan/lcc-fasd-casia-combined/data): for anti-spoofing training
-```bash
 
+Folder Structure
+```bash
+AMLFacialRecognitionProject/
+├── README.md
+├── gui/
+│   ├── antispoof_preprocess.py
+│   ├── emotion_innovation.py
+│   └── gui.py
+├── model/
+│   ├── anti_spoof/
+│   │   ├── antispoof.ipynb
+│   │   ├── antispoof_preprocess.py
+│   │   └── antispoof_v3.ipynb
+│   ├── emotion_detection/
+│   │   ├── artifacts/
+│   │   ├── emotion_cnn_baseline.ipynb
+│   │   ├── emotion_detection_innovation.ipynb
+│   │   ├── emotion_model_evaluation.ipynb
+│   │   └── emotion_resnet34_transfer.ipynb
+│   ├── metric_learning/
+│   │   ├── artifacts/
+│   │   ├── evaluations/
+│   │   ├── logger.py
+│   │   └── metric_learning.py
+│   └── supervised_learning
+│       ├── artifacts/
+│       ├── supervised.ViT.ipynb
+│       ├── supervised.ipynb
+│       ├── supervised_cnn.ipynb
+│       ├── supervised_recognition.ipynb
+│       └── supervised_recognition_ViT.ipynb
+├── preprocessing/
+│   ├── emotion_preprocessing.py
+│   └── preprocessing.py
+├── registered_people/
+├── requirements.txt
+└── test
+    └── main.py
 ```
 
 ## Instructions
