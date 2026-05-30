@@ -10,7 +10,7 @@ Team Member Names and Student ID:
 
 Data source:
 - [11-785-Fall-20-Homework-2: Part 2](https://www.kaggle.com/competitions/11-785-fall-20-homework-2-part-2/overview): for metric learning and supervised learning models training
-- [FER-2013](https://www.kaggle.com/datasets/msambare/fer2013): for emotion detection model training
+- [RAF-DB DATASET](https://www.kaggle.com/datasets/shuvoalok/raf-db-dataset): for emotion detection model training
 - [LCC_FASD_CASIA](https://www.kaggle.com/datasets/ahmedruhshan/lcc-fasd-casia-combined/data): for anti-spoofing training
 
 Folder Structure
@@ -75,6 +75,8 @@ pip install -r requirements.txt
 
 3. Run StreamLit GUI
 ```bash
-cd gui/
+cd gui/ # you MUST run it inside of this folder
 streamlit run gui.py
 ```
+
+> NOTE: If you're running this on MacOS, you may have to change ```cap = cv2.VideoCapture(0)``` to ```cap = cv2.VideoCapture(1)``` in gui/gui.py

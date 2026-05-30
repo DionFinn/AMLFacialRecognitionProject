@@ -40,7 +40,7 @@ VAL_PATH = os.path.join(CLASSIFICATION_PATH, "val_data/")
 PAIRS_FILE = os.path.join(DATASET_PATH, 'verification_pairs_val.txt')
 ARTIFACTS_DIR = "models/artifacts/"
 
-IMG_SIZE = (224, 224)
+# IMG_SIZE = (224, 224)
 
 EPOCHS = 20
 BATCH_SIZE = 32
@@ -123,11 +123,7 @@ class TripletDataset(Dataset):
         # idx is intentionally ignored - triplets are sampled randomly
         anchor_id = random.choice(self.ids)
 
-        negative_id = random.choice(self.ids)
-        # while negative_id == anchor_id: # ensures negative != anchor
-        #     # negative_id = random.choice(self.ids)
-        #     candidate_ids = [x for x in self.ids if x != anchor_id]
-        #     negative_id = random.choice(candidate_ids)
+        # negative_id = random.choice(self.ids)
 
         candidate_ids = [x for x in self.ids if x != anchor_id]
         negative_id = random.choice(candidate_ids)
@@ -159,7 +155,7 @@ def evaluate_verification(model, pairs_file, device, metric="cosine"):
             line = line.strip()
             if not line:
                 continue
-        # pairs = [line.strip().split() for line in f if line.strip()]
+
             parts = line.split()
             if len(parts) != 3:
                 continue

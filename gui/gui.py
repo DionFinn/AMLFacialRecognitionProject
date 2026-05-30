@@ -73,7 +73,7 @@ def load_selected_model(model_choice):
         embedding_dim = 384
     elif model_choice == "metric_learning":
         model = torch.load("../model/models/metric_learning_scripted_v3.pt", map_location=device, weights_only=False)
-        embedding_dim = 384
+        embedding_dim = 128
     else:
         model = torch.load("../model/models/EfficientNet_supervised.pt", map_location=device, weights_only=False)
         embedding_dim = 1280
@@ -248,10 +248,10 @@ if run_camera:
             # * IDENTITY REGISTRATION
             if st.session_state.register_flag:
                 os.makedirs(REGISTERED_DIR, exist_ok=True)
-                # Sanitize text characters
+                # sanitize text characters
                 clean_name = "".join([c for c in reg_name if c.isalnum() or c in (' ', '_', '-')]).strip()
                 
-                # UPGRADE 1: Isolate enrollment into a dedicated subfolder
+                # Isolate enrollment into a dedicated subfolder
                 person_folder = os.path.join(REGISTERED_DIR, clean_name)
                 os.makedirs(person_folder, exist_ok=True)
                 file_target_path = os.path.join(person_folder, f"reg_{int(time.time())}.jpg")
